@@ -107,6 +107,41 @@ int32_t Process_EnumHandles(::Process* self, ::HandleInfo* out)
 	return &self->modules();
 }
 
+bool Process_MemoryRead(::Process* self, uint64_t src, void* dst, uint32_t size)
+{
+	if (!self) return false;
+	return NT_SUCCESS(self->memory().Read(src, size, dst));
+}
+
+bool Process_MemoryWrite(::Process* self, void* src, uint64_t dst, uint32_t size)
+{
+	if (!self) return false;
+	auto& memory = self->memory();
+	if (NT_SUCCESS(memory.Protect(dst, size, PAGE_READWRITE)))
+	{
+		memory.Write(dst, size, src);
+		return true;
+	}
+	return false;
+}
+
+uint64_t Process_MemoryAllocate(::Process* self, uint32_t size)
+{
+	if (!self) return 0;
+	auto ret = self->memory().Allocate(size);
+	if (!ret)
+		return 0;
+	auto& block = ret.result();
+	block.Release();
+	return block.ptr();
+}
+
+bool Process_MemoryFree(::Process* self, uint64_t addr)
+{
+	if (!self) return false;
+	return NT_SUCCESS(self->memory().Free(addr));
+}
+
 const ::ModuleData* ProcessModules_GetModule(::ProcessModules* self, const wchar_t* name, ::eModSeachType search,
 	::eModType type)
 {

@@ -46,6 +46,11 @@ extern "C"{
 	BB_API int32_t Process_EnumHandles(Process* self, HandleInfo* out);
 	BB_API ProcessModules* Process_modules(Process* self);
 
+	BB_API bool Process_MemoryRead(Process* self, uint64_t src, void* dst, uint32_t size);
+	BB_API bool Process_MemoryWrite(Process* self, void* src, uint64_t dst, uint32_t size);
+	BB_API uint64_t Process_MemoryAllocate(Process* self, uint32_t size);
+	BB_API bool Process_MemoryFree(Process* self, uint64_t addr);
+
 	BB_API const ModuleData* ProcessModules_GetModule(ProcessModules* self,
 		const wchar_t* name, eModSeachType search, eModType type);
 	BB_API const ModuleData* ProcessModules_GetMainModule(ProcessModules* self);
