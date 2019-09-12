@@ -73,7 +73,7 @@ end
 --
 
 function M.sleep(ms)
-    ffi.C.Sleep(s)
+    ffi.C.Sleep(ms)
 end
 
 local insert = table.insert
