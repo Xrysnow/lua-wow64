@@ -25,5 +25,5 @@ proc.SetCurrentDirectory('path/to/dll')
 proc.LoadLibrary('dllname.dll')
 proc.setMod('dllname.dll')
 proc.addDef('func', { 'int', 'int' }, 'int')
-print(proc.call('func'))
+print(proc.call('func', 1, 2))
 ```
