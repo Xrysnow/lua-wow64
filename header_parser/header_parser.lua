@@ -125,8 +125,7 @@ function M.parse(code)
             assert(retType ~= '')
             if si[start][2] == 'void' and si[start + 1][2] == ')' then
                 start = #si + 1
-            end
-            if si[start][2] == ')' then
+            elseif si[start][2] == ')' then
                 start = #si + 1
             end
             local curr = start
@@ -186,13 +185,6 @@ function M.convertComment(str, arg, ret)
             end
         end
         line = helper.stringTrim(line)
-        --if line:sub(1, 3) == ' * ' then
-        --    line = line:sub(4, -1)
-        --elseif line:sub(1, 2) == '* ' then
-        --    line = line:sub(3, -1)
-        --elseif line == ' *' then
-        --    line = ''
-        --end
         if line:sub(1, 2) == '* ' then
             line = line:sub(3, -1)
         elseif line:sub(1, 1) == '*' then
@@ -210,9 +202,9 @@ function M.convertComment(str, arg, ret)
                 end
             elseif line:sub(2, 8) == 'return ' and ret then
                 local split = helper.stringSplit(line, ' ')
-                local ptype = var.lua_type(ret)
-                if ptype then
-                    table.insert(split, 2, ptype)
+                local rtype = var.lua_type(ret)
+                if rtype then
+                    table.insert(split, 2, rtype)
                     table.insert(split, 3, '@(' .. ret .. ')')
                     line = table.concat(split, ' ')
                 end
@@ -222,6 +214,25 @@ function M.convertComment(str, arg, ret)
             line = '--- ' .. line
         end
         lines[i] = line
+    end
+    return table.concat(lines, '\n')
+end
+
+function M.genDoc(arg, ret)
+    local lines = {}
+    for _, v in ipairs(arg) do
+        local ptype, real_type = var.lua_type(v[1]), v[1]
+        if ptype then
+            table.insert(lines, string.format(
+                    '---@param %s %s @(%s)',
+                    v[2], ptype, real_type))
+        end
+    end
+    local rtype = var.lua_type(ret)
+    if rtype then
+        table.insert(lines, string.format(
+                '---@return %s @(%s)',
+                rtype, ret))
     end
     return table.concat(lines, '\n')
 end
@@ -275,6 +286,10 @@ function M.generate(parsed)
             --
             if p.doc then
                 local doc = M.convertComment(p.doc, p[3], p[4])
+                append(doc)
+                append('\n')
+            else
+                local doc = M.genDoc(p[3], p[4])
                 append(doc)
                 append('\n')
             end
