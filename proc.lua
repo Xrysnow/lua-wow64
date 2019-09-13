@@ -105,11 +105,9 @@ function M.caller(modName)
     end
 end
 
-local cstd = {}
-setmetatable(cstd, { __index = function(t, k)
-    cstd = require('cstd')
-    return cstd[k]
-end })
+local function cstd()
+    return require('cstd')
+end
 
 local function pointer_value(p)
     if ffi.istype('AsmVariant', p) then
@@ -159,11 +157,10 @@ end
 function M.getRemoteString(src)
     src = pointer_value(src)
     assert(src ~= 0)
-    local len = cstd.strlen(src)
-    local buf = ffi.new('char[?]', len)
-    local dst = var.array(buf)
-    cstd.memcpy(dst, src, len)
-    return ffi.string(buf)
+    local len = cstd().strlen(src) + 1
+    local dst = ffi.new('char[?]', len)
+    M.memRead(dst, src, len)
+    return ffi.string(dst)
 end
 
 function M.derefRemotePointer(src)

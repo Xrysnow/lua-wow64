@@ -1,11 +1,22 @@
 ---@class AsmVariant
 ---@field value any
 ---@field type string
+---@field ctype string
+---@field size number
+---@field raw cdata
+---@field T table
+---@field remote cdata
 local M = {}
 local lib = require('libBlackBone')
 local ffi = require('ffi')
 local toWideChar = require('helper').toWideChar
+local fromWideChar = require('helper').fromWideChar
 local tostring = tostring
+---@type fun(o):number
+local sizeof = ffi.sizeof
+local function proc()
+    return require('proc')
+end
 
 local _type = ffi.metatype(ffi.typeof('AsmVariant'), M)
 local _field = {}
@@ -13,6 +24,9 @@ local _field = {}
 ---@return AsmVariant
 local function create(...)
     local ret = ffi.gc(_type(), function(o)
+        if not o:_getProp('detach_remote') then
+            o:releaseRemote()
+        end
         _field[tostring(o)] = nil
         lib.AsmVariant_dtor(o)
     end)
@@ -36,6 +50,7 @@ function M:_getType()
 end
 function M:_setValue(v)
     self:_setProp('value', v)
+    self:_updateRemote()
     return self
 end
 function M:_getValue()
@@ -48,18 +63,58 @@ end
 function M:_getCType()
     return self:_getProp('ctype')
 end
+function M:_getSize()
+    return sizeof(self:_getValue())
+end
+function M:_updateRemote(force)
+    local r = self:_getProp('remote')
+    if not r then
+        if not force then
+            return
+        end
+        r = proc().alloc(self:_getSize())
+        self:_setProp('remote', r)
+    end
+    proc().memWrite(self:_getValue(), r, self:_getSize())
+end
+function M:_getRemote()
+    local r = self:_getProp('remote')
+    if not r then
+        self:_updateRemote(true)
+        return self:_getProp('remote')
+    else
+        return r
+    end
+end
+function M:releaseRemote()
+    local r = self:_getProp('remote')
+    if r then
+        proc().free(r)
+        self:_setProp('remote', nil)
+    end
+end
+function M:detachRemote()
+    local r = self:_getProp('remote')
+    if r then
+        self:_setProp('detach_remote', true)
+    end
+end
 
 function M:__index(k)
     if k == 'type' then
-        return self:_getType()
+        return self:_getType().name
     elseif k == 'value' then
-        local ty = self:_getType()
-        local val = self:_getValue()
-        if ty == 'bool' then
-            return val ~= 0
-        else
-            return val
-        end
+        return self:_getType().get(self)
+    elseif k == 'size' then
+        return self:_getSize()
+    elseif k == 'raw' then
+        return self:_getValue()
+    elseif k == 'ctype' then
+        return self:_getCType()
+    elseif k == 'T' then
+        return self:_getType()
+    elseif k == 'remote' then
+        return self:_getRemote()
     elseif type(k) == 'number' then
         if self:_getType() == 'pointer' then
             return M.deref()
@@ -71,12 +126,6 @@ end
 
 function M.is_var(v)
     return ffi.istype('AsmVariant', v)
-end
-
-local function integer(v, byteSize, isUnsigned)
-    local var = create()
-    lib.AsmVariant_set_integer(var, v, byteSize, not isUnsigned)
-    return var
 end
 
 local _signed_name = {
@@ -101,9 +150,8 @@ local function make_int(size, unsigned)
         name = _signed_name[size]
     end
     assert(name)
-    local t = { T = name }
+    local t = { name = name }
     t.set = function(var, v)
-        assert(M.is_var(var))
         if type(v) == 'boolean' then
             v = v and 1 or 0
         elseif v == nil then
@@ -123,7 +171,7 @@ local function make_int(size, unsigned)
         __call  = function(_, v)
             local var = create()
             t.set(var, v)
-            var:_setType(name):_setCType(name)
+            var:_setType(t):_setCType(name)
             return var
         end,
         __index = function(_, k)
@@ -144,9 +192,8 @@ M.uint64_t = make_int(8, true)
 
 ---@type fun():AsmVariant
 M.float = setmetatable(
-        { T   = 'float',
-          set = function(var, v)
-              assert(M.is_var(var))
+        { name = 'float',
+          set  = function(var, v)
               if M.is_var(v) then
                   v = v.value
               end
@@ -154,14 +201,14 @@ M.float = setmetatable(
               lib.AsmVariant_set_float(var, v_[0])
               var:_setValue(v_)
           end,
-          get = function(var)
+          get  = function(var)
               return var:_getValue()[0]
           end
         },
         { __call  = function(_, v)
             local var = create()
             M.float.set(var, v)
-            var:_setType('float'):_setCType('float')
+            var:_setType(M.float):_setCType('float')
             return var
         end,
           __index = function(_, k)
@@ -172,9 +219,8 @@ M.float = setmetatable(
 
 ---@type fun():AsmVariant
 M.double = setmetatable(
-        { T   = 'double',
-          set = function(var, v)
-              assert(M.is_var(var))
+        { name = 'double',
+          set  = function(var, v)
               if M.is_var(v) then
                   v = v.value
               end
@@ -182,14 +228,14 @@ M.double = setmetatable(
               lib.AsmVariant_set_double(var, v_[0])
               var:_setValue(v_)
           end,
-          get = function(var)
+          get  = function(var)
               return var:_getValue()[0]
           end
         },
         { __call  = function(_, v)
             local var = create()
             M.double.set(var, v)
-            var:_setType('double'):_setCType('double')
+            var:_setType(M.double):_setCType('double')
             return var
         end,
           __index = function(_, k)
@@ -200,9 +246,9 @@ M.double = setmetatable(
 
 ---@type fun():AsmVariant
 M.bool = setmetatable(
-        { T   = 'bool',
-          set = M.int32_t.set,
-          get = function(var)
+        { name = 'bool',
+          set  = M.int32_t.set,
+          get  = function(var)
               return var:_getValue()[0] ~= 0
           end
         },
@@ -211,7 +257,7 @@ M.bool = setmetatable(
                 v = v and 1 or 0
             end
             local var = M.int32_t(v)
-            var:_setType('bool'):_setCType('bool')
+            var:_setType(M.bool):_setCType('bool')
             return var
         end,
           __index = function(_, k)
@@ -222,9 +268,9 @@ M.bool = setmetatable(
 
 ---@type fun():AsmVariant
 M.pointer = setmetatable(
-        { T   = 'pointer',
-          set = M.uint64_t.set,
-          get = M.uint64_t.get,
+        { name = 'pointer',
+          set  = M.uint64_t.set,
+          get  = M.uint64_t.get,
         },
         { __call  = function(_, v, ctype)
             assert(ffi.istype('uint64_t', v) or v == 0 or v == nil)
@@ -233,7 +279,7 @@ M.pointer = setmetatable(
             end
             ctype = ctype or 'void'
             local var = M.uint64_t(v)
-            var:_setType('pointer'):_setCType(ctype .. '*')
+            var:_setType(M.pointer):_setCType(ctype .. '*')
             return var
         end,
           __index = function(_, k)
@@ -244,41 +290,96 @@ M.pointer = setmetatable(
 
 M.nullptr = M.pointer()
 
----@return AsmVariant
-function M.string(v)
-    local var = create()
-    lib.AsmVariant_set_string(var, v)
-    var:_setType('string')
-    return var
-end
+---@type fun():AsmVariant
+M.string = setmetatable(
+        { name = 'string',
+          set  = function(var, v)
+              local buf, len
+              if M.is_var(v) then
+                  v = v:_getValue()
+              elseif type(v) == 'string' then
+                  len = #v + 1
+              else
+                  -- cdata
+              end
+              len = len or ffi.sizeof(v)
+              buf = ffi.new(string.format('char[%d]', len))
+              ffi.copy(buf, v, len)
+              var:_setValue(buf)
+              lib.AsmVariant_set_string(var, buf)
+          end,
+          get  = function(var)
+              return ffi.string(var:_getValue())
+          end,
+        },
+        { __call  = function(_, v)
+            local var = create()
+            M.string.set(var, v)
+            var:_setType(M.string):_setCType('char*')
+            return var
+        end,
+          __index = function(_, k)
+              return M.array('string', k)
+          end,
+        }
+)
 
----@return AsmVariant
-function M.wstring(v)
-    if type(v) == 'string' then
-        v = toWideChar(v)
-    end
-    local var = create()
-    lib.AsmVariant_set_wstring(var, v)
-    var:_setType('wstring')
-    return var
-end
+---@type fun():AsmVariant
+M.wstring = setmetatable(
+        { name = 'wstring',
+          set  = function(var, v)
+              local buf, len
+              if M.is_var(v) then
+                  v = v:_getValue()
+              elseif type(v) == 'string' then
+                  v = toWideChar(v)
+              else
+                  -- cdata
+              end
+              len = ffi.sizeof(v)
+              buf = ffi.new(string.format('wchar_t[%d]', len))
+              ffi.copy(buf, v, len)
+              var:_setValue(buf)
+              lib.AsmVariant_set_wstring(var, buf)
+          end,
+          get  = function(var)
+              return ffi.string(fromWideChar(var:_getValue()))
+          end,
+        },
+        { __call  = function(_, v)
+            local var = create()
+            M.string.set(var, v)
+            var:_setType(M.wstring):_setCType('wchar_t*')
+            return var
+        end,
+          __index = function(_, k)
+              return M.array('wstring', k)
+          end,
+        }
+)
 
----@return AsmVariant
-function M.array(cdata_or_ctype, size)
-    local var = create()
-    if type(cdata_or_ctype) == 'cdata' then
-        size = size or ffi.sizeof(cdata_or_ctype)
-    elseif type(cdata_or_ctype) == 'string' then
-        cdata_or_ctype = ffi.new(cdata_or_ctype .. '[?]', size)
-        size = ffi.sizeof(cdata_or_ctype)
-    else
-        error('wrong param')
-    end
-    lib.AsmVariant_set_arbitrary_pointer(var, cdata_or_ctype, size)
-    var:_setType('array')
-    var:_setValue(cdata_or_ctype)
-    return var
-end
+---@type fun(cdata_or_ctype:any, size:number):AsmVariant
+M.array = setmetatable(
+        { name = 'array',
+          get  = function(var)
+              return var:_getValue()
+          end,
+        },
+        { __call = function(_, ctype, size)
+            local var = create()
+            local cdata
+            if type(ctype) == 'string' then
+                cdata = ffi.new(string.format('%s[%d]', ctype, size))
+            else
+                error('wrong param')
+            end
+            size = ffi.sizeof(ctype)
+            lib.AsmVariant_set_arbitrary_pointer(var, cdata, size)
+            var:_setType(M.array):_setValue(cdata):_setCType(ctype .. '*')
+            return var
+        end,
+        }
+)
 
 function M.buffer(size)
     return M.array('char', size)
@@ -505,9 +606,12 @@ function M.getStringArray(char_p_p, num)
     end
     local ret = {}
     for i = 1, num do
-        table.insert(ret, require('proc').getRemoteString(buf[i - 1][0]))
+        table.insert(ret, f(buf[i - 1][0]))
     end
     return ret
 end
+
+--
+---@class cdata
 
 return M
