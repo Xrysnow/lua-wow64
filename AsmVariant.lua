@@ -348,7 +348,7 @@ M.wstring = setmetatable(
         },
         { __call  = function(_, v)
             local var = create()
-            M.string.set(var, v)
+            M.wstring.set(var, v)
             var:_setType(M.wstring):_setCType('wchar_t*')
             return var
         end,
