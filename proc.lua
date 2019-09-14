@@ -41,7 +41,14 @@ function M.start(path)
         assert(status >= 0)
         lib.Process_Resume(_proc)
         helper.sleep(100)
-        M.LoadLibrary('msvcrt.dll')
+        if M.LoadLibrary('kernel32.dll') == 0 then
+            print(M.GetLastError())
+            error('failed to load kernel32')
+        end
+        if M.LoadLibrary('msvcrt.dll') == 0 then
+            print(M.GetLastError())
+            error('failed to load msvcrt')
+        end
     end
 end
 
@@ -93,7 +100,7 @@ function M.call(name, ...)
     local args, argv, argc = var.pack(def[1], values)
     local ok = lib.RemoteCall(
             _proc, _mod, name, 1, argv, argc,
-            retVal, retSize, retT, false)
+            retVal, retSize, retT, false, false)
     check(ok)
     return retVal[0]
 end
@@ -204,7 +211,7 @@ function M.LoadLibrary(path)
     local mod = L 'kernel32.dll'
     local ok = lib.RemoteCall(
             _proc, mod, 'LoadLibraryW', 1, argv, argc,
-            ret, 8, ReturnType.rt_int64, false)
+            ret, 8, ReturnType.rt_int64, false, false)
     check(ok)
     return ret[0]
 end
@@ -214,7 +221,7 @@ function M.GetLastError()
     local mod = L 'kernel32.dll'
     local ok = lib.RemoteCall(
             _proc, mod, 'GetLastError', 1, nil, 0,
-            ret, 4, ReturnType.rt_int32, false)
+            ret, 4, ReturnType.rt_int32, false, false)
     check(ok)
     return ret[0]
 end
@@ -225,7 +232,7 @@ function M.SetCurrentDirectory(path)
     local args, argv, argc = var.pack_va('const wchar_t*', path)
     local ok = lib.RemoteCall(
             _proc, mod, 'SetCurrentDirectoryW', 1, argv, argc,
-            ret, 4, ReturnType.rt_int32, false)
+            ret, 4, ReturnType.rt_int32, false, false)
     check(ok)
     return ret[0]
 end
@@ -237,7 +244,7 @@ function M.GetCurrentDirectory()
     local args, argv, argc = var.pack_va('int32_t', 260, 'wchar_t*', buf)
     local ok = lib.RemoteCall(
             _proc, mod, 'GetCurrentDirectoryW', 1, argv, argc,
-            ret, 4, ReturnType.rt_int32, false)
+            ret, 4, ReturnType.rt_int32, false, false)
     check(ok)
     if ret[0] == 0 then
         print('error in GetCurrentDirectory:', M.GetLastError())
