@@ -54,6 +54,13 @@ NTSTATUS Process_Terminate(Process* self, uint32_t code);
 //int32_t Process_EnumHandles(Process* self, HandleInfo* out);
 ProcessModules* Process_modules(Process* self);
 
+bool Process_MemoryRead(Process* self, uint64_t src, void* dst, uint32_t size);
+bool Process_MemoryWrite(Process* self, void* src, uint64_t dst, uint32_t size);
+uint64_t Process_MemoryAllocate(Process* self, uint32_t size);
+bool Process_MemoryFree(Process* self, uint64_t addr);
+
+//
+
 const ModuleData* ProcessModules_GetModule(ProcessModules* self,
 	const wchar_t* name, eModSeachType search, eModType type);
 const ModuleData* ProcessModules_GetMainModule(ProcessModules* self);
@@ -73,7 +80,7 @@ void ProcessModules_reset(ProcessModules* self);
 
 int32_t RemoteCall(Process* process, const wchar_t* modName, const char* name_ord,
 	eCalligConvention conv, AsmVariant** argv, int32_t argc,
-	void* ret, int32_t retSize, eReturnType retType, bool retIsReference);
+	void* ret, int32_t retSize, eReturnType retType, bool retIsReference, bool inNewThread);
 
 //
 

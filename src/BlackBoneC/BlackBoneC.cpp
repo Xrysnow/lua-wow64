@@ -217,7 +217,7 @@ void ProcessModules_reset(::ProcessModules* self)
 }
 
 int32_t RemoteCall(::Process* process, const wchar_t* modName, const char* name_ord, ::eCalligConvention conv,
-	::AsmVariant** argv, int32_t argc, void* ret, int32_t retSize, ::eReturnType retType, bool retIsReference)
+	::AsmVariant** argv, int32_t argc, void* ret, int32_t retSize, ::eReturnType retType, bool retIsReference, bool inNewThread)
 {
 	if (!process || !modName || !name_ord) return -1;
 	auto exp = process->modules().GetExport(modName, name_ord);
@@ -225,10 +225,24 @@ int32_t RemoteCall(::Process* process, const wchar_t* modName, const char* name_
 		return -2;
 	auto& _process = *process;
 	ThreadPtr contextThread = nullptr;
+	bool bEvent = false;
+	WorkerThreadMode wstate = Worker_None;
+	if (!inNewThread)
+	{
+		contextThread = process->remote().getWorker();
+		wstate = Worker_CreateNew;
+		bEvent = true;
+	}
 	auto a = AsmFactory::GetAssembler(_process.core().isWow64());
-	auto status = _process.remote().CreateRPCEnvironment(Worker_None, contextThread != nullptr);
+	auto status = _process.remote().CreateRPCEnvironment(wstate, bEvent);
 	if (!NT_SUCCESS(status))
 		return -3;
+	if (wstate == Worker_CreateNew && !contextThread)
+	{
+		contextThread = process->remote().getWorker();
+		if (!contextThread)
+			return -7;
+	}
 	auto _ptr = exp->procAddress;
 	std::vector<::AsmVariant> arguments;
 	for (auto i = 0; i < argc; ++i)
@@ -237,7 +251,12 @@ int32_t RemoteCall(::Process* process, const wchar_t* modName, const char* name_
 	if (!NT_SUCCESS(status))
 		return -4;
 	uint64_t tmpResult = 0;
-	status = _process.remote().ExecInNewThread((*a)->make(), (*a)->getCodeSize(), tmpResult);
+	if (!contextThread)
+		status = _process.remote().ExecInNewThread((*a)->make(), (*a)->getCodeSize(), tmpResult);
+	else if (contextThread == _process.remote().getWorker())
+		status = _process.remote().ExecInWorkerThread((*a)->make(), (*a)->getCodeSize(), tmpResult);
+	else
+		status = _process.remote().ExecInAnyThread((*a)->make(), (*a)->getCodeSize(), tmpResult, contextThread);
 	if (!NT_SUCCESS(status))
 		return -5;
 /*

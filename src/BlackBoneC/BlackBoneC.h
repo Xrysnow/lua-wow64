@@ -13,6 +13,8 @@ using ProcessModules = blackbone::ProcessModules;
 using ModuleData = blackbone::ModuleData;
 using exportData = blackbone::exportData;
 using AsmVariant = blackbone::AsmVariant;
+using ProcessThreads = blackbone::ProcessThreads;
+using Thread = blackbone::Thread;
 
 using eModType = blackbone::eModType;
 using eModSeachType = blackbone::eModSeachType;
@@ -70,7 +72,7 @@ extern "C"{
 
 	BB_API int32_t RemoteCall(Process* process, const wchar_t* modName, const char* name_ord,
 		eCalligConvention conv, AsmVariant** argv, int32_t argc,
-		void* ret, int32_t retSize, eReturnType retType, bool retIsReference);
+		void* ret, int32_t retSize, eReturnType retType, bool retIsReference, bool inNewThread);
 
 	//
 
